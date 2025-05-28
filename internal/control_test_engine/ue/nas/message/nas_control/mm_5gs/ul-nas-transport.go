@@ -21,7 +21,7 @@ import (
 
 func Request_UlNasTransport(pduSession *context.UEPDUSession, ue *context.UEContext) ([]byte, error) {
 
-	pdu := getUlNasTransport_PduSessionEstablishmentRequest(pduSession.Id, ue.Dnn, &ue.Snssai)
+	pdu := getUlNasTransport_PduSessionEstablishmentRequest(pduSession.Id, ue.Dnn, ue.IpType, &ue.Snssai)
 	if pdu == nil {
 		return nil, fmt.Errorf("Error encoding %s IMSI UE PduSession Establishment Request Msg", ue.UeSecurity.Supi)
 	}
@@ -61,9 +61,31 @@ func ReleasComplete_UlNasTransport(pduSession *context.UEPDUSession, ue *context
 	return pdu, nil
 }
 
-func getUlNasTransport_PduSessionEstablishmentRequest(pduSessionId uint8, dnn string, sNssai *models.Snssai) (nasPdu []byte) {
+func getUlNasTransport_PduSessionEstablishmentRequest(pduSessionId uint8, dnn, ipType string, sNssai *models.Snssai) (nasPdu []byte) {
 
-	pduSessionEstablishmentRequest := sm_5gs.GetPduSessionEstablishmentRequest(pduSessionId)
+	var sessionType uint8
+	switch ipType {
+	case "IPv4":
+		sessionType = uint8(0x01)
+		break
+	case "IPv6":
+		sessionType = uint8(0x02)
+		break
+	case "IPv4v6":
+		sessionType = uint8(0x03)
+		break
+	case "Ethernet":
+		sessionType = uint8(0x04)
+		break
+	case "Unstructured":
+		sessionType = uint8(0x05)
+		break
+	default:
+		sessionType = uint8(0x01)
+		break
+	}
+
+	pduSessionEstablishmentRequest := sm_5gs.GetPduSessionEstablishmentRequest(pduSessionId, sessionType)
 
 	m := nas.NewMessage()
 	m.GmmMessage = nas.NewGmmMessage()

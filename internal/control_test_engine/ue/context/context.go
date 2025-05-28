@@ -62,6 +62,7 @@ type UEContext struct {
 
 	// TODO: Modify config so you can configure these parameters per PDUSession
 	Dnn        string
+	IpType     string
 	Snssai     models.Snssai
 	TunnelMode config.TunnelMode
 
@@ -117,7 +118,7 @@ type SECURITY struct {
 
 func (ue *UEContext) NewRanUeContext(msin string,
 	ueSecurityCapability *nasType.UESecurityCapability,
-	k, opc, op, amf, sqn, mcc, mnc string, homeNetworkPublicKey sidf.HomeNetworkPublicKey, routingIndicator, dnn string,
+	k, opc, op, amf, sqn, mcc, mnc string, homeNetworkPublicKey sidf.HomeNetworkPublicKey, routingIndicator, dnn, iptype string,
 	sst int32, sd string, tunnelMode config.TunnelMode, scenarioChan chan scenario.ScenarioMessage,
 	gnbInboundChannel chan context.UEMessage, id int) {
 
@@ -162,6 +163,7 @@ func (ue *UEContext) NewRanUeContext(msin string,
 
 	// added Domain Network Name.
 	ue.Dnn = dnn
+	ue.IpType = iptype
 	ue.TunnelMode = tunnelMode
 
 	ue.UeSecurity.Suci = ue.EncodeSuci()

@@ -41,6 +41,7 @@ func NewUE(conf config.Config, id int, ueMgrChannel chan procedures.UeTesterMess
 		conf.GetHomeNetworkPublicKey(),
 		conf.Ue.RoutingIndicator,
 		conf.Ue.Dnn,
+		conf.Ue.IpType,
 		int32(conf.Ue.Snssai.Sst),
 		conf.Ue.Snssai.Sd,
 		conf.Ue.TunnelMode,

@@ -14,7 +14,7 @@ import (
 	"github.com/free5gc/nas/nasType"
 )
 
-func GetPduSessionEstablishmentRequest(pduSessionId uint8) (nasPdu []byte) {
+func GetPduSessionEstablishmentRequest(pduSessionId, sessionType uint8) (nasPdu []byte) {
 
 	m := nas.NewMessage()
 	m.GsmMessage = nas.NewGsmMessage()
@@ -29,7 +29,7 @@ func GetPduSessionEstablishmentRequest(pduSessionId uint8) (nasPdu []byte) {
 	pduSessionEstablishmentRequest.IntegrityProtectionMaximumDataRate.SetMaximumDataRatePerUEForUserPlaneIntegrityProtectionForUpLink(0xff)
 
 	pduSessionEstablishmentRequest.PDUSessionType = nasType.NewPDUSessionType(nasMessage.PDUSessionEstablishmentRequestPDUSessionTypeType)
-	pduSessionEstablishmentRequest.PDUSessionType.SetPDUSessionTypeValue(uint8(0x01)) //IPv4 type
+	pduSessionEstablishmentRequest.PDUSessionType.SetPDUSessionTypeValue(sessionType)
 
 	pduSessionEstablishmentRequest.ExtendedProtocolConfigurationOptions = nasType.NewExtendedProtocolConfigurationOptions(nasMessage.PDUSessionEstablishmentRequestExtendedProtocolConfigurationOptionsType)
 	protocolConfigurationOptions := nasConvert.NewProtocolConfigurationOptions()

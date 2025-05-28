@@ -66,6 +66,7 @@ type Ue struct {
 	Amf                    string     `yaml:"amf"`
 	Sqn                    string     `yaml:"sqn"`
 	Dnn                    string     `yaml:"dnn"`
+	IpType                 string     `yaml:"iptype"`
 	ProtectionScheme       int        `yaml:"protectionScheme"`
 	HomeNetworkPublicKey   string     `yaml:"homeNetworkPublicKey"`
 	HomeNetworkPublicKeyID uint8      `yaml:"homeNetworkPublicKeyID"`

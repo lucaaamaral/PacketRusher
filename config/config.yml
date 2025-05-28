@@ -60,6 +60,8 @@ ue:
 
   # UE will request to establish a data session in this DNN (APN)
   dnn: "internet"
+  # UE will request an IP of this type (IPv4 or IPv6)
+  iptype: "IPv4"
   # in the following slice
   snssai:
     sst: "01"
