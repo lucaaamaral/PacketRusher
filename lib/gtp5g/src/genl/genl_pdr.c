@@ -541,9 +541,22 @@ static int parse_pdi(struct pdr *pdr, struct nlattr *a)
             if (!pdi->ue_addr_ipv4)
                 return -ENOMEM;
         }
-        pdi->ue_addr_ipv4->s_addr = nla_get_be32(attrs[GTP5G_PDI_UE_ADDR_IPV4]);
+        pdi->ue_addr_ipv4->s_addr = nla_get_in_addr(attrs[GTP5G_PDI_UE_ADDR_IPV4]);
 
         ip_string(ip_str, pdi->ue_addr_ipv4->s_addr);
+        GTP5G_LOG(NULL, "IPv4 address: %s\n", ip_str);
+    }
+
+    if (attrs[GTP5G_PDI_UE_ADDR_IPV6]) {
+        if (!pdi->ue_addr_ipv6) {
+            pdi->ue_addr_ipv6 = kzalloc(sizeof(*pdi->ue_addr_ipv6), GFP_ATOMIC);
+            if (!pdi->ue_addr_ipv6)
+                return -ENOMEM;
+        }
+        *(pdi->ue_addr_ipv6) = nla_get_in6_addr(attrs[GTP5G_PDI_UE_ADDR_IPV6]);
+
+        ipv6_string(ip_str, pdi->ue_addr_ipv6->in6_u.u6_addr16);
+        GTP5G_LOG(NULL, "IPv6 address: %s\n", ip_str);
     }
 
     if (attrs[GTP5G_PDI_F_TEID]) {

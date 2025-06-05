@@ -47,6 +47,7 @@ struct sdf_filter {
 struct pdi {
     u8 srcIntf;
     struct in_addr *ue_addr_ipv4;
+    struct in6_addr *ue_addr_ipv6;
     struct local_f_teid *f_teid;
     struct sdf_filter *sdf;
 };
