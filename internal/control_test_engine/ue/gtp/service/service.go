@@ -47,7 +47,14 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 	ueGnbIp := pduSession.GetGnbIp()
 	upfIp := pduSession.GnbPduSession.GetUpfIp()
 	qfi := pduSession.GnbPduSession.GetQosId()
-	ueIp := pduSession.GetIp()
+	ueIpv4 := pduSession.GetIpv4()
+	ueIpv6 := pduSession.GetIpv6()
+	var ueIp string = ueIpv4
+	var ueIpType string = "ipv4"
+	if len(ueIpv4) == 0 {
+		ueIp = ueIpv6
+		ueIpType = "ipv6"
+	}
 	msin := ue.GetMsin()
 	nameInf := fmt.Sprintf("val%s", msin)
 	vrfInf := fmt.Sprintf("vrf%s", msin)
@@ -63,7 +70,7 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 	go func() {
 		// This function should not return as long as the GTP-U UDP socket is open
 		if err := gtpLink.CmdAddWithStopCh(nameInf, 1, 131072, ueGnbIp.String(), "", stopSignal); err != nil {
-			log.Fatal("[GNB][GTP] Unable to create Kernel GTP interface: ", err, msin, nameInf)
+			log.Fatal("[GNB][GTP] Unable to create Kernel GTP interface: ", err, " ", msin, " ", nameInf)
 			return
 		}
 	}()
@@ -100,13 +107,18 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 		"1",          // PDR ID = 1
 		"--pcd", "1", // Precedence = 1
 		"--hdr-rm", "0", // Outer Header Removal = GTP-U/UDP/IPv4
-		"--ue-ipv4", ueIp, // UE IP Address
+		"--ue-" + ueIpType, ueIp, // UE IP Address
 		"--f-teid", strconv.FormatUint(uint64(gnbPduSession.GetTeidDownlink()), 10), msg.GnbIp.String(), // F-TEID
 		"--far-id", "1", // FAR ID = 1
 		"--src-intf", "1", // Source Interface = Core
 	}
 	log.Debug("[UE][GTP] Setting up GTP Packet Detection Rule for ", strings.Join(cmdAddPdr, " "))
 	if err := gtpTunnel.CmdAddPDR(cmdAddPdr); err != nil {
+		log.Info("[GNB][GTP] FAR 2")
+		log.Info("[GNB][GTP] FAR ueIpType ", ueIpType)
+		log.Info("[GNB][GTP] FAR ueIpv4 ", ueIpv4)
+		log.Info("[GNB][GTP] FAR ueIpv6 ", ueIpv6)
+		log.Info("[GNB][GTP] FAR ueIp ", ueIp)
 		log.Fatal("[GNB][GTP] Unable to create FAR: ", err)
 		return
 	}
@@ -114,7 +126,7 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 	cmdAddPdr = []string{nameInf,
 		"2",          // PDR ID = 2
 		"--pcd", "2", // Precedence = 2
-		"--ue-ipv4", ueIp, // UE IP Address
+		"--ue-" + ueIpType, ueIp, // UE IP Address
 		"--far-id", "2", // FAR ID = 2
 		"--src-intf", "0", // Source Interface = Access
 		"--gtpu-src-ip", ueGnbIp.String(), // GTP-U source IP address (not part of PFCP spec)
@@ -149,12 +161,21 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 	// Add UE IP Address onto the TUN network interface.
 	addrTun := &netlink.Addr{
 		IPNet: &net.IPNet{
-			IP:   net.ParseIP(ueIp).To4(),
+			IP:   net.ParseIP(ueIpv4).To4(),
 			Mask: net.IPv4Mask(255, 255, 255, 255),
 		},
 	}
+	if len(ueIpv4) == 0 {
+		addrTun = &netlink.Addr{
+			IPNet: &net.IPNet{
+				IP:   net.ParseIP(ueIpv6),
+				Mask: net.CIDRMask(128, 128),
+			},
+			Scope: int(netlink.SCOPE_UNIVERSE),
+		}
+	}
 	if err := netlink.AddrAdd(link, addrTun); err != nil {
-		log.Fatal("[UE][DATA] Error in adding IP for virtual interface", err)
+		log.Fatal("[UE][DATA] Error in adding IP for virtual interface ", err)
 		return
 	}
 
@@ -162,6 +183,7 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 	tableId := gnbPduSession.GetTeidUplink()
 	switch ue.TunnelMode {
 	case config.TunnelTun:
+		log.Trace("[UE][DATA] Creating tunnel tun")
 		rule := netlink.NewRule()
 		rule.Priority = 100
 		rule.Table = int(tableId)
@@ -174,6 +196,7 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 		}
 		pduSession.SetTunRule(rule)
 	case config.TunnelVrf:
+		log.Trace("[UE][DATA] Creating tunnel vrf")
 		vrfDevice := &netlink.Vrf{
 			LinkAttrs: netlink.LinkAttrs{
 				Name: vrfInf,

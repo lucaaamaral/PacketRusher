@@ -80,7 +80,8 @@ type Amf struct {
 type UEPDUSession struct {
 	Id            uint8
 	GnbPduSession *context.GnbPDUSession
-	ueIP          string
+	ueIPv4        string
+	ueIPv6        string
 	ueGnbIP       netip.Addr
 	tun           netlink.Link
 	rule          *netlink.Rule
@@ -337,12 +338,25 @@ func (ue *UEContext) DeletePduSession(pduSessionid uint8) error {
 	return nil
 }
 
-func (pduSession *UEPDUSession) SetIp(ip [12]uint8) {
-	pduSession.ueIP = fmt.Sprintf("%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3])
+func (pduSession *UEPDUSession) SetIpv4(ip [4]uint8) {
+	pduSession.ueIPv4 = fmt.Sprintf("%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3])
 }
 
-func (pduSession *UEPDUSession) GetIp() string {
-	return pduSession.ueIP
+func (pduSession *UEPDUSession) SetIpv6(ip [8]uint8) {
+	pduSession.ueIPv6 = fmt.Sprintf("fe80::%x:%x:%x:%x", ip[0:2], ip[2:4], ip[4:6], ip[6:8])
+}
+
+func (pduSession *UEPDUSession) SetIpv4v6(ip [12]uint8) {
+	pduSession.ueIPv6 = fmt.Sprintf("::%x:%x:%x:%x", ip[0:2], ip[2:4], ip[4:6], ip[6:8])
+	pduSession.ueIPv4 = fmt.Sprintf("%d.%d.%d.%d", ip[8], ip[9], ip[10], ip[11])
+}
+
+func (pduSession *UEPDUSession) GetIpv4() string {
+	return pduSession.ueIPv4
+}
+
+func (pduSession *UEPDUSession) GetIpv6() string {
+	return pduSession.ueIPv6
 }
 
 func (pduSession *UEPDUSession) SetGnbIp(ip netip.Addr) {

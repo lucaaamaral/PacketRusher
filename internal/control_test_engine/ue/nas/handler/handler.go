@@ -347,11 +347,13 @@ func HandlerDlNasTransportPduaccept(ue *context.UEContext, message *nas.Message)
 			log.Fatal("[UE][NAS] Error in PDU Session Establishment Accept, Message Type is missing or not expected value")
 		}
 
-		if reflect.ValueOf(pduSessionEstablishmentAccept.SelectedSSCModeAndSelectedPDUSessionType).IsZero() {
+		pduSessionType := pduSessionEstablishmentAccept.SelectedSSCModeAndSelectedPDUSessionType
+		if reflect.ValueOf(pduSessionType).IsZero() {
 			log.Fatal("[UE][NAS] Error in PDU Session Establishment Accept, SSC Mode or PDU Session Type is missing")
 		}
 
-		if pduSessionEstablishmentAccept.SelectedSSCModeAndSelectedPDUSessionType.GetPDUSessionType() != 1 {
+		if pduSessionType.GetPDUSessionType() < 1 ||
+			pduSessionType.GetPDUSessionType() > 3 {
 			log.Fatal("[UE][NAS] Error in PDU Session Establishment Accept, PDU Session Type not the expected value")
 		}
 
@@ -375,7 +377,33 @@ func HandlerDlNasTransportPduaccept(ue *context.UEContext, message *nas.Message)
 
 		// get UE IP
 		UeIp := pduSessionEstablishmentAccept.GetPDUAddressInformation()
-		pduSession.SetIp(UeIp)
+
+		switch pduSessionType.GetPDUSessionType() {
+		case 1: // IPv4
+			var ipv4Addr [4]uint8
+			copy(ipv4Addr[:], UeIp[:4])
+			pduSession.SetIpv4(ipv4Addr)
+			break
+		case 2: // IPv6
+			var ipv6Addr [8]uint8
+			copy(ipv6Addr[:], UeIp[:8])
+			pduSession.SetIpv6([8]uint8(ipv6Addr))
+			log.Info("[UE][NAS] PDU IPv6 address received: ", pduSession.GetIpv6())
+			break
+		case 3: // IPv4v6
+			var ipv6Addr [8]uint8
+			var ipv4Addr [4]uint8
+			copy(ipv6Addr[:], UeIp[:8])
+			copy(ipv4Addr[:], UeIp[8:12])
+			pduSession.SetIpv4(ipv4Addr)
+			pduSession.SetIpv6(ipv6Addr)
+			log.Info("[UE][NAS] PDU IPv4 address received: ", pduSession.GetIpv4())
+			log.Info("[UE][NAS] PDU IPv6 address received: ", pduSession.GetIpv6())
+			break
+		default: // not supported
+			log.Fatal("[UE][NAS] PDU session type not supported")
+			break
+		}
 
 		// get QoS Rules
 		QosRule := pduSessionEstablishmentAccept.AuthorizedQosRules.GetQosRule()
@@ -389,7 +417,8 @@ func HandlerDlNasTransportPduaccept(ue *context.UEContext, message *nas.Message)
 		log.Info("[UE][NAS] PDU session DNN: ", string(dnn))
 		log.Info("[UE][NAS] PDU session NSSAI -- sst: ", sst, " sd: ",
 			fmt.Sprintf("%x%x%x", sd[0], sd[1], sd[2]))
-		log.Info("[UE][NAS] PDU address received: ", pduSession.GetIp())
+		log.Info("[UE][NAS] PDU IPv4 address received: ", pduSession.GetIpv4())
+		log.Info("[UE][NAS] PDU IPv6 address received: ", pduSession.GetIpv6())
 	case nas.MsgTypePDUSessionReleaseCommand:
 		log.Info("[UE][NAS] Receiving PDU Session Release Command")
 
