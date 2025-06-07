@@ -39,7 +39,8 @@ static void pdr_context_free(struct rcu_head *head)
     if (!pdr)
         return;
 
-    sock_put(pdr->sk);
+    if (pdr->sk) 
+        sock_put(pdr->sk);
 
     if (pdr->outer_header_removal)
         kfree(pdr->outer_header_removal);

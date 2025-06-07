@@ -124,6 +124,12 @@ int gtp5g_genl_add_pdr(struct sk_buff *skb, struct genl_info *info)
         return -ENOMEM;
     }
 
+    if (!gtp->sk1u) {
+        pdr_context_delete(pdr);
+        rcu_read_unlock();
+        rtnl_unlock();
+        return -ENODEV;
+    }
     sock_hold(gtp->sk1u);
     pdr->sk = gtp->sk1u;
     pdr->dev = gtp->dev;
