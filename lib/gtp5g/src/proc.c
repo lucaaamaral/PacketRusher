@@ -17,10 +17,13 @@ struct proc_gtp5g_pdr {
     u32     precedence;
     u8      ohr;
     u32     role_addr4;
+    u16     role_addr6[8];
 
     u32     pdi_ue_addr4;
+    u16     pdi_ue_addr6[8];
     u32     pdi_fteid;
     u32     pdi_gtpu_addr4;
+    u32     pdi_gtpu_addr6[8];
     
     u32     far_id;
     u32     *qer_ids;
@@ -348,7 +351,7 @@ static ssize_t proc_pdr_write(struct file *filp, const char __user *buffer,
     size_t len, loff_t *dptr)
 {
     char buf[128], dev_name[32];
-    u8 found = 0;
+    u8 found = 0, i;
     unsigned long buf_len = min(sizeof(buf) - 1, len);
     struct pdr *pdr;
     struct gtp5g_dev *gtp;
@@ -389,15 +392,21 @@ static ssize_t proc_pdr_write(struct file *filp, const char __user *buffer,
     if (pdr->outer_header_removal) 
         proc_pdr.ohr = *pdr->outer_header_removal;
     
-    if (pdr->role_addr_ipv4.s_addr)
-        proc_pdr.role_addr4 = pdr->role_addr_ipv4.s_addr;
+    proc_pdr.role_addr4 = pdr->role_addr_ipv4.s_addr;
+    for (i=0; i < (sizeof(proc_pdr.role_addr6) / sizeof(proc_pdr.role_addr6[0])); i++)
+        proc_pdr.role_addr6[i] = pdr->role_addr_ipv6.in6_u.u6_addr16[i];
     
     if (pdr->pdi) {
         if (pdr->pdi->ue_addr_ipv4) 
             proc_pdr.pdi_ue_addr4 = pdr->pdi->ue_addr_ipv4->s_addr;
+        if (pdr->pdi->ue_addr_ipv6) 
+            for (i=0; i < (sizeof(proc_pdr.pdi_ue_addr6) / sizeof(proc_pdr.pdi_ue_addr6[0])); i++)
+                proc_pdr.pdi_ue_addr6[i] = pdr->pdi->ue_addr_ipv6->in6_u.u6_addr16[i];
         if (pdr->pdi->f_teid) {
             proc_pdr.pdi_fteid = pdr->pdi->f_teid->teid;
             proc_pdr.pdi_gtpu_addr4 = pdr->pdi->f_teid->gtpu_addr_ipv4.s_addr;
+            for (i=0; i < (sizeof(proc_pdr.pdi_gtpu_addr6) / sizeof(proc_pdr.pdi_gtpu_addr6[0])); i++)
+                proc_pdr.pdi_gtpu_addr6[i] = pdr->pdi->f_teid->gtpu_addr_ipv6.in6_u.u6_addr16[i];
         }
     }
 

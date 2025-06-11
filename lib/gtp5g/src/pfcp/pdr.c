@@ -49,6 +49,8 @@ static void pdr_context_free(struct rcu_head *head)
     if (pdi) {
         if (pdi->ue_addr_ipv4)
             kfree(pdi->ue_addr_ipv4);
+        if (pdi->ue_addr_ipv6)
+            kfree(pdi->ue_addr_ipv6);
         if (pdi->f_teid)
             kfree(pdi->f_teid);
         if (pdr->far_id)
@@ -309,6 +311,11 @@ struct pdr *pdr_find_by_gtp1u(struct gtp5g_dev *gtp, struct sk_buff *skb,
             if (!(pdr->af == AF_INET && target_addr && *target_addr == pdi->ue_addr_ipv4->s_addr))
                 continue;
 
+        // IPv6 on UPF
+        if (pdi->ue_addr_ipv6)
+            if (!(pdr->af == AF_INET6 && target_addr && ipv6_addr_equal(((struct in6_addr*)target_addr), pdi->ue_addr_ipv6)))
+                continue;
+
         if (pdi->sdf)
             if (!sdf_filter_match(pdi->sdf, skb, hdrlen, GTP5G_SDF_FILTER_OUT))
                 continue;
@@ -328,13 +335,39 @@ struct pdr *pdr_find_by_ipv4(struct gtp5g_dev *gtp, struct sk_buff *skb,
     struct pdr *pdr;
     struct pdi *pdi;
 
-    head = &gtp->addr_hash[ipv4_hashfn(addr) % gtp->hash_size];
+    head = &gtp->addr_hash[u32_hashfn(addr) % gtp->hash_size];
 
     hlist_for_each_entry_rcu(pdr, head, hlist_addr) {
         pdi = pdr->pdi;
 
         // TODO: Move the value we check into first level
         if (!(pdr->af == AF_INET && pdi->ue_addr_ipv4->s_addr == addr))
+            continue;
+
+        if (pdi->sdf)
+            if (!sdf_filter_match(pdi->sdf, skb, hdrlen, GTP5G_SDF_FILTER_OUT))
+                continue;
+
+        return pdr;
+    }
+
+    return NULL;
+}
+
+struct pdr *pdr_find_by_ipv6(struct gtp5g_dev *gtp, struct sk_buff *skb,
+        unsigned int hdrlen, struct in6_addr addr)
+{
+    struct hlist_head *head;
+    struct pdr *pdr;
+    struct pdi *pdi;
+
+    head = &gtp->addr_hash[u32_hashfn(addr.s6_addr32[3]) % gtp->hash_size];
+
+    hlist_for_each_entry_rcu(pdr, head, hlist_addr) {
+        pdi = pdr->pdi;
+
+        // TODO: Move the value we check into first level
+        if (!(pdr->af == AF_INET6 && ipv6_addr_equal(pdi->ue_addr_ipv6, &addr)))
             continue;
 
         if (pdi->sdf)
@@ -364,6 +397,14 @@ void pdr_update_hlist_table(struct pdr *pdr, struct gtp5g_dev *gtp)
     struct pdr *last_ppdr;
     struct pdi *pdi;
     struct local_f_teid *f_teid;
+    struct in6_addr *ip6addr;
+
+    if (!pdr || !gtp)
+        return;
+    
+    pdi = pdr->pdi;
+    if (!pdi)
+        return;
 
     if (!hlist_unhashed(&pdr->hlist_i_teid))
         hlist_del_rcu(&pdr->hlist_i_teid);
@@ -371,9 +412,6 @@ void pdr_update_hlist_table(struct pdr *pdr, struct gtp5g_dev *gtp)
     if (!hlist_unhashed(&pdr->hlist_addr))
         hlist_del_rcu(&pdr->hlist_addr);
 
-    pdi = pdr->pdi;
-    if (!pdi)
-        return;
 
     f_teid = pdi->f_teid;
     if (f_teid) {
@@ -402,6 +440,22 @@ void pdr_update_hlist_table(struct pdr *pdr, struct gtp5g_dev *gtp)
             hlist_add_head_rcu(&pdr->hlist_addr, head);
         else
             hlist_add_behind_rcu(&pdr->hlist_addr, &last_ppdr->hlist_addr);
+    } else if (pdi->ue_addr_ipv6) {
+        last_ppdr = NULL;
+        ip6addr = pdi->ue_addr_ipv6;
+        head = &gtp->addr_hash[u32_hashfn(ip6addr->s6_addr32[3]) % gtp->hash_size];
+        hlist_for_each_entry_rcu(ppdr, head, hlist_addr) {
+            if (pdr->precedence > ppdr->precedence) {
+                last_ppdr = ppdr;
+            } else {
+                break;
+            }
+        }
+        if (!last_ppdr)
+            hlist_add_head_rcu(&pdr->hlist_addr, head);
+        else
+            hlist_add_behind_rcu(&pdr->hlist_addr, &last_ppdr->hlist_addr);
+        GTP5G_LOG(NULL, "Added PDR entry %d IPv6 addr %pI6c\n", pdr->id, ip6addr);
     }
 }
 

@@ -27,6 +27,8 @@ enum gtp5g_pdr_attrs {
      * free5GC's UPF or libgtp5gnl
      * */
 
+    GTP5G_PDR_ROLE_ADDR_IPV6,
+    
     __GTP5G_PDR_ATTR_MAX,
 };
 #define GTP5G_PDR_ATTR_MAX 16
@@ -50,6 +52,8 @@ enum gtp5g_f_teid_attrs {
     GTP5G_F_TEID_UNSPEC,
     GTP5G_F_TEID_I_TEID,
     GTP5G_F_TEID_GTPU_ADDR_IPV4,
+    GTP5G_F_TEID_GTPU_ADDR_IPV6,
+
     __GTP5G_F_TEID_ATTR_MAX,
 };
 #define GTP5G_F_TEID_ATTR_MAX 8

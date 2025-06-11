@@ -439,7 +439,11 @@ static int pdr_fill(struct pdr *pdr, struct gtp5g_dev *gtp, struct genl_info *in
             break;
         case GTP5G_PDR_ROLE_ADDR_IPV4:
             /* Not in 3GPP spec, just used for routing */
-            pdr->role_addr_ipv4.s_addr = nla_get_u32(hdr);
+            pdr->role_addr_ipv4.s_addr = nla_get_in_addr(hdr);
+            break;
+        case GTP5G_PDR_ROLE_ADDR_IPV6:
+            /* Not in 3GPP spec, just used for routing */
+            pdr->role_addr_ipv6 = nla_get_in6_addr(hdr);
             break;
         case GTP5G_PDR_UNIX_SOCKET_PATH:
             /* Not in 3GPP spec, just used for buffering */
@@ -597,7 +601,7 @@ static int parse_f_teid(struct pdi *pdi, struct nlattr *a)
     if (!attrs[GTP5G_F_TEID_I_TEID])
         return -EINVAL;
 
-    if (!attrs[GTP5G_F_TEID_GTPU_ADDR_IPV4])
+    if (!attrs[GTP5G_F_TEID_GTPU_ADDR_IPV4] && !attrs[GTP5G_F_TEID_GTPU_ADDR_IPV6])
         return -EINVAL;
 
     if (!pdi->f_teid) {
@@ -609,8 +613,14 @@ static int parse_f_teid(struct pdi *pdi, struct nlattr *a)
 
     f_teid->teid = htonl(nla_get_u32(attrs[GTP5G_F_TEID_I_TEID]));
 
-    f_teid->gtpu_addr_ipv4.s_addr = nla_get_be32(attrs[GTP5G_F_TEID_GTPU_ADDR_IPV4]);
-
+    if (attrs[GTP5G_F_TEID_GTPU_ADDR_IPV4])
+        f_teid->gtpu_addr_ipv4.s_addr = nla_get_in_addr(attrs[GTP5G_F_TEID_GTPU_ADDR_IPV4]);
+    if (attrs[GTP5G_F_TEID_GTPU_ADDR_IPV6])
+        f_teid->gtpu_addr_ipv6 = nla_get_in6_addr(attrs[GTP5G_F_TEID_GTPU_ADDR_IPV6]);
+    if (f_teid->gtpu_addr_ipv4.s_addr == 0 && ipv6_addr_any(&f_teid->gtpu_addr_ipv6)) {
+        GTP5G_ERR(NULL, "GTPU address is not set\n");
+        return -EINVAL;
+    }
     return 0;
 }
 
@@ -880,6 +890,8 @@ static int gtp5g_genl_fill_f_teid(struct sk_buff *skb, struct local_f_teid *f_te
         return -EMSGSIZE;
     if (nla_put_be32(skb, GTP5G_F_TEID_GTPU_ADDR_IPV4, f_teid->gtpu_addr_ipv4.s_addr))
         return -EMSGSIZE;
+    if (nla_put_in6_addr(skb, GTP5G_F_TEID_GTPU_ADDR_IPV6, &f_teid->gtpu_addr_ipv6))
+        return -EMSGSIZE;
 
     nla_nest_end(skb, nest_f_teid);
     return 0;
@@ -894,7 +906,12 @@ static int gtp5g_genl_fill_pdi(struct sk_buff *skb, struct pdi *pdi)
         return -EMSGSIZE;
 
     if (pdi->ue_addr_ipv4) {
-        if (nla_put_be32(skb, GTP5G_PDI_UE_ADDR_IPV4, pdi->ue_addr_ipv4->s_addr))
+        if (nla_put_in_addr(skb, GTP5G_PDI_UE_ADDR_IPV4, pdi->ue_addr_ipv4->s_addr))
+            return -EMSGSIZE;
+    }
+    
+    if (pdi->ue_addr_ipv6) {
+        if (nla_put_in6_addr(skb, GTP5G_PDI_UE_ADDR_IPV6, pdi->ue_addr_ipv6))
             return -EMSGSIZE;
     }
 
@@ -954,10 +971,11 @@ static int gtp5g_genl_fill_pdr(struct sk_buff *skb, u32 snd_portid, u32 snd_seq,
             goto genlmsg_fail;
     }
 
-    if (pdr->role_addr_ipv4.s_addr) {
-        if (nla_put_u32(skb, GTP5G_PDR_ROLE_ADDR_IPV4, pdr->role_addr_ipv4.s_addr))
-            goto genlmsg_fail;
-    }
+    if (nla_put_in_addr(skb, GTP5G_PDR_ROLE_ADDR_IPV4, pdr->role_addr_ipv4.s_addr))
+        goto genlmsg_fail;
+
+    if (nla_put_in6_addr(skb, GTP5G_PDR_ROLE_ADDR_IPV6, &(pdr->role_addr_ipv6)))
+        goto genlmsg_fail;
 
     if (pdr->pdi) {
         if (gtp5g_genl_fill_pdi(skb, pdr->pdi))

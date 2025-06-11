@@ -8,6 +8,7 @@
 #include <linux/skbuff.h>
 #include <linux/un.h>
 #include <net/ip.h>
+#include <linux/in6.h>
 
 #include "urr.h"
 #include "trTCM.h"
@@ -17,6 +18,7 @@
 struct local_f_teid {
     u32 teid;
     struct in_addr gtpu_addr_ipv4;
+    struct in6_addr gtpu_addr_ipv6;
 };
 
 struct ip_filter_rule {
@@ -86,6 +88,7 @@ struct pdr {
 
     u16 af;
     struct in_addr role_addr_ipv4;
+    struct in6_addr role_addr_ipv6;
     struct sock *sk;
     struct net_device *dev;
     struct rcu_head rcu_head;
