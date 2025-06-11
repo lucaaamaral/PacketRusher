@@ -1,14 +1,18 @@
 #ifndef __GTP5G_LOG_H__
 #define __GTP5G_LOG_H__
+#ifndef BASE_PATH
+#define BASE_PATH ""
+#endif
+#define RELATIVE_PATH(file) (strstr(file, BASE_PATH) && BASE_PATH[0] ? strstr(file, BASE_PATH) + strlen(BASE_PATH) : file)
 
 #include <linux/netdevice.h>
 
 #define DBG(level, dev, fmt, args...) do {      \
     if (level <= get_dbg_lvl()) {               \
         if (dev)                                \
-            printk_ratelimited("%s:[gtp5g] %s: "fmt, netdev_name(dev), __func__, ##args);   \
+            printk_ratelimited("%s:[gtp5g] %s:%d %s: "fmt, netdev_name(dev), RELATIVE_PATH(__FILE__), __LINE__, __func__, ##args);   \
         else                                    \
-            printk_ratelimited("[gtp5g] %s: " fmt, __func__, ##args);       \
+            printk_ratelimited("[gtp5g] %s:%d %s: " fmt, RELATIVE_PATH(__FILE__), __LINE__, __func__, ##args);       \
     } \
 } while(0)
 
