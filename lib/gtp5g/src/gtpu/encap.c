@@ -1086,3 +1086,66 @@ int gtp5g_handle_skb_ipv4(struct sk_buff *skb, struct net_device *dev,
 
     return -ENOENT;
 }
+
+int gtp5g_handle_skb_ipv6(struct sk_buff *skb, struct net_device *dev,
+    struct gtp5g_pktinfo *pktinfo)
+{
+    struct gtp5g_dev *gtp = netdev_priv(dev);
+    struct pdr *pdr;
+    struct far *far;
+    //struct gtp5g_qer *qer;
+    struct ipv6hdr *iph;
+    struct qer __rcu *qer_with_rate = NULL;
+
+    /* Read the IP destination address and resolve the PDR.
+     * Prepend PDR header with TEI/TID from PDR.
+     */
+    iph = ipv6_hdr(skb);
+    if (gtp->role == GTP5G_ROLE_UPF){
+        pdr = pdr_find_by_ipv6(gtp, skb, 0, iph->daddr);
+        if (!pdr) {
+            GTP5G_INF(dev, "no PDR found for %pI6, skip\n", &iph->daddr);
+            return -ENOENT;
+        }
+    }
+    else {
+        pdr = pdr_find_by_ipv6(gtp, skb, 0, iph->saddr);
+        if (!pdr) {
+            GTP5G_INF(dev, "no PDR found for %pI6, skip\n", &iph->saddr);
+            return -ENOENT;
+        }
+    }
+
+    /* TODO: QoS rule have to apply before apply FAR 
+     * */
+    //qer = rcu_dereference(pdr->qer);
+    //if (qer) {
+    //    GTP5G_ERR(dev, "%s:%d QER Rule found, id(%#x) qfi(%#x) TODO\n", 
+    //            __func__, __LINE__, qer->id, qer->qfi);
+    //}
+
+    qer_with_rate = rcu_dereference(pdr->qer_with_rate);
+    far = rcu_dereference(pdr->far);
+    if (far) {
+        // One and only one of the DROP, FORW and BUFF flags shall be set to 1.
+        // The NOCP flag may only be set if the BUFF flag is set.
+        // The DUPL flag may be set with any of the DROP, FORW, BUFF and NOCP flags.
+        switch (far->action & FAR_ACTION_MASK) {
+        case FAR_ACTION_DROP:
+            return gtp5g_drop_skb_ipv4(skb, dev, pdr);
+        case FAR_ACTION_FORW:
+            if (pdr->ul_dl_gate & QER_DL_GATE_CLOSE) {
+                GTP5G_TRC(pdr->dev, "QER DL gate is closed, drop the packet");
+                return PKT_DROPPED;
+            }
+            return gtp5g_fwd_skb_ipv4(skb, dev, pktinfo, pdr, far);
+        case FAR_ACTION_BUFF:
+            return gtp5g_buf_skb_ipv4(skb, dev, pdr, far);
+        default:
+            GTP5G_ERR(dev, "Unspec apply action(%u) in FAR(%u) and related to PDR(%u)",
+                far->action, far->id, pdr->id);
+        }
+    }
+
+    return -ENOENT;
+}

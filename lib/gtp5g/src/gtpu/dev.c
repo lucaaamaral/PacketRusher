@@ -116,8 +116,14 @@ static netdev_tx_t gtp5g_dev_xmit(struct sk_buff *skb, struct net_device *dev)
         ret = gtp5g_handle_skb_ipv4(skb, dev, &pktinfo);
         update_usage_statistic(gtp, rxVol, skb->len, ret, SRC_INTF_CORE); // DL
         break;
+    case ETH_P_IPV6:
+        ret = gtp5g_handle_skb_ipv6(skb, dev, &pktinfo);
+        update_usage_statistic(gtp, rxVol, skb->len, ret, SRC_INTF_CORE); // DL
+        break;
     default:
+        GTP5G_ERR(dev, "Unsupported protocol: %x\n", proto);
         ret = -EOPNOTSUPP;
+        break;
     }
     rcu_read_unlock();
 
