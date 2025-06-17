@@ -1009,6 +1009,84 @@ err:
     return -EBADMSG;
 }
 
+static int gtp5g_fwd_skb_ipv6(struct sk_buff *skb, 
+    struct net_device *dev, struct gtp5g_pktinfo *pktinfo, 
+    struct pdr *pdr, struct far *far)
+{
+    struct rt6_info *rt;
+    struct flowi6 fl6;
+    struct ipv6hdr *iph = ipv6_hdr(skb);
+    struct outer_header_creation *hdr_creation;
+    u64 volume, volume_mbqe = 0;
+    struct forwarding_parameter *fwd_param;
+    u8 pdu_type = PDU_SESSION_INFO_TYPE0;
+
+    TrafficPolicer* tp = NULL;
+    Color color = Green;
+    struct qer __rcu *qer_with_rate = NULL;
+    
+    if (!far) {
+        GTP5G_ERR(dev, "Unknown RAN address for IPv6\n");
+        goto err;
+    }
+
+    fwd_param = rcu_dereference(far->fwd_param);
+    if (!(fwd_param && fwd_param->hdr_creation)) {
+        GTP5G_ERR(dev, "Unknown RAN address for IPv6\n");
+        goto err;
+    }
+
+    hdr_creation = fwd_param->hdr_creation;
+    // Note: IPv6 routing requires different handling. This is a placeholder for actual IPv6 routing.
+    // For now, we assume an IPv4 outer tunnel, so we still use IPv4 routing for the outer header.
+    rt = (struct rt6_info *)ip4_find_route(skb, (struct iphdr *)iph, pdr->sk, dev, 
+        pdr->role_addr_ipv4.s_addr, hdr_creation->peer_addr_ipv4.s_addr, (struct flowi4 *)&fl6);
+    if (IS_ERR(rt))
+        goto err;
+
+    if (is_uplink(pdr)) {
+        pdu_type = PDU_SESSION_INFO_TYPE1;
+    }
+
+    // Note: gtp5g_set_pktinfo_ipv6 needs to be implemented for proper IPv6 handling.
+    // For now, using IPv4 function as a placeholder with necessary casting.
+    gtp5g_set_pktinfo_ipv4(pktinfo, pdr->sk, (struct iphdr *)iph, hdr_creation, 
+        pdr->qfi, pdu_type, far->seq_number, (struct rtable *)rt, (struct flowi4 *)&fl6, dev);
+
+    far->seq_number++;
+    pdr->dl_pkt_cnt++;
+    pdr->dl_byte_cnt += skb->len;
+    GTP5G_INF(NULL, "PDR (%u) DL_PKT_CNT (%llu) DL_BYTE_CNT (%llu)", pdr->id, pdr->dl_pkt_cnt, pdr->dl_byte_cnt);
+
+    volume_mbqe = skb->len; // Placeholder for ip6_rm_header, to be implemented.
+
+    qer_with_rate = rcu_dereference(pdr->qer_with_rate);
+    if (qer_with_rate != NULL)
+        tp = qer_with_rate->dl_policer;
+    if (get_qos_enable() && tp != NULL) {
+        color = policePacket(tp, volume_mbqe);
+    }
+    if (color == Red) {
+        volume = 0;
+    } else {
+        volume = volume_mbqe;
+    }
+
+    gtp5g_push_header(skb, pktinfo);
+
+    if (pdr->urr_num != 0) {
+        if (update_urr_counter_and_send_report(pdr, far, volume, volume_mbqe, false) < 0)
+            GTP5G_ERR(pdr->dev, "Fail to send Usage Report");
+    }
+    if (color == Red) {
+        GTP5G_TRC(pdr->dev, "Drop red packet");
+        return PKT_DROPPED;
+    }
+    return PKT_FORWARDED;
+err:
+    return -EBADMSG;
+}
+
 static int gtp5g_buf_skb_ipv4(struct sk_buff *skb, struct net_device *dev,
     struct pdr *pdr, struct far *far)
 {
@@ -1138,7 +1216,7 @@ int gtp5g_handle_skb_ipv6(struct sk_buff *skb, struct net_device *dev,
                 GTP5G_TRC(pdr->dev, "QER DL gate is closed, drop the packet");
                 return PKT_DROPPED;
             }
-            return gtp5g_fwd_skb_ipv4(skb, dev, pktinfo, pdr, far);
+            return gtp5g_fwd_skb_ipv6(skb, dev, pktinfo, pdr, far);
         case FAR_ACTION_BUFF:
             return gtp5g_buf_skb_ipv4(skb, dev, pdr, far);
         default:
