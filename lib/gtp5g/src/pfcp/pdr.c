@@ -360,15 +360,37 @@ struct pdr *pdr_find_by_ipv6(struct gtp5g_dev *gtp, struct sk_buff *skb,
     struct hlist_head *head;
     struct pdr *pdr;
     struct pdi *pdi;
-
+    struct in6_addr partial_stored, partial_addr;
     head = &gtp->addr_hash[u32_hashfn(addr.s6_addr32[3]) % gtp->hash_size];
+
+    GTP5G_TRC(NULL, "Looking up PDR for IPv6 addr %pI6c\n", &addr);
 
     hlist_for_each_entry_rcu(pdr, head, hlist_addr) {
         pdi = pdr->pdi;
-
         // TODO: Move the value we check into first level
-        if (!(pdr->af == AF_INET6 && ipv6_addr_equal(pdi->ue_addr_ipv6, &addr)))
+
+        // WORKAROUND NOTE: This is a temporary workaround to match only the
+        // last 64 bits (interface identifier) of IPv6 addresses, ignoring the
+        // prefix. This shall be reversed in a future update to handle full IPv6
+        // addresses. Original version kept below for reference:
+        // if (!(pdr->af == AF_INET6 && ipv6_addr_equal(pdi->ue_addr_ipv6, &addr)))
+        //     continue;
+        
+        if (pdr->af != AF_INET6)
             continue;
+
+        // Compare only the last 64 bits (interface identifier), ignoring the prefix
+        partial_stored = *pdi->ue_addr_ipv6;
+        partial_stored.s6_addr32[0] = 0;
+        partial_stored.s6_addr32[1] = 0;
+        partial_addr = addr;
+        partial_addr.s6_addr32[0] = 0;
+        partial_addr.s6_addr32[1] = 0;
+        
+        if (!ipv6_addr_equal(&partial_stored, &partial_addr))
+            continue;
+
+        GTP5G_TRC(NULL, "Matched PDR ID:%d with partial IPv6 addr %pI6c\n", pdr->id, pdi->ue_addr_ipv6);
 
         if (pdi->sdf)
             if (!sdf_filter_match(pdi->sdf, skb, hdrlen, GTP5G_SDF_FILTER_OUT))
