@@ -785,8 +785,20 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
         return PKT_DROPPED;
     }
 
-    if (gtp1->type == GTPV1_MSG_TYPE_TPDU)
-        volume_mbqe = ip4_rm_header(skb, hdrlen);
+    if (gtp1->type == GTPV1_MSG_TYPE_TPDU) {
+        switch (skb->protocol) {
+            case htons(ETH_P_IP):
+                volume_mbqe = ip4_rm_header(skb, hdrlen);
+                break;
+            case htons(ETH_P_IPV6):
+                // Placeholder for IPv6 header removal
+                // volume_mbqe = skb->len - hdrlen;
+                // break;
+            default:
+                GTP5G_ERR(dev, "Unsupported protocol in GTP packet\n");
+                return PKT_DROPPED;
+        }
+    }
 
     qer_with_rate = rcu_dereference(pdr->qer_with_rate);
     if (qer_with_rate != NULL){
@@ -824,6 +836,8 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
 
             iph->saddr = pdr->pdi->f_teid->gtpu_addr_ipv4.s_addr;
             iph->daddr = hdr_creation->peer_addr_ipv4.s_addr;
+            GTP5G_INF(dev, "Outer tunnel using IPv4: Source %pI4, Destination %pI4", 
+                &iph->saddr, &iph->daddr);
             if (hdr_creation->tosTc) {
                 iph->tos = hdr_creation->tosTc;
             }

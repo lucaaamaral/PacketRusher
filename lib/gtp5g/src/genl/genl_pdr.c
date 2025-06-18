@@ -480,8 +480,12 @@ static int pdr_fill(struct pdr *pdr, struct gtp5g_dev *gtp, struct genl_info *in
     
     if (!pdr)
         return -EINVAL;
-
-    pdr->af = AF_INET;
+    if (pdr->pdi && pdr->pdi->ue_addr_ipv4) {
+        pdr->af = AF_INET;
+    }
+    if (pdr->pdi && pdr->pdi->ue_addr_ipv6) {
+        pdr->af = AF_INET6;
+    }
     far = find_far_by_id(gtp, pdr->seid, *pdr->far_id);
     if (!far) {
         return -EINVAL;
