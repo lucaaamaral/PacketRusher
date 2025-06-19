@@ -49,16 +49,15 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 	qfi := pduSession.GnbPduSession.GetQosId()
 	ueIpv4 := pduSession.GetIpv4()
 	ueIpv6 := pduSession.GetIpv6()
-	var ueIp string = ueIpv4
-	var ueIpType string = "ipv4"
-	if len(ueIpv4) == 0 {
-		ueIp = ueIpv6
-		ueIpType = "ipv6"
-	}
 	msin := ue.GetMsin()
 	nameInf := fmt.Sprintf("val%s", msin)
 	vrfInf := fmt.Sprintf("vrf%s", msin)
 	stopSignal := make(chan bool)
+
+	if len(ueIpv4) == 0 && len(ueIpv6) == 0 {
+		log.Info(fmt.Sprintf("[UE][DATA] Missing IP configuration for UE %s", ue.GetMsin()))
+		return
+	}
 
 	_ = gtpLink.CmdDel(nameInf)
 
@@ -107,29 +106,36 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 		"1",          // PDR ID = 1
 		"--pcd", "1", // Precedence = 1
 		"--hdr-rm", "0", // Outer Header Removal = GTP-U/UDP/IPv4
-		"--ue-" + ueIpType, ueIp, // UE IP Address
 		"--f-teid", strconv.FormatUint(uint64(gnbPduSession.GetTeidDownlink()), 10), msg.GnbIp.String(), // F-TEID
 		"--far-id", "1", // FAR ID = 1
 		"--src-intf", "1", // Source Interface = Core
 	}
+	if len(ueIpv4) != 0 {
+		cmdAddPdr = append(cmdAddPdr, "--ue-ipv4", ueIpv4) // UE IPv4 Address
+	}
+	if len(ueIpv6) != 0 {
+		cmdAddPdr = append(cmdAddPdr, "--ue-ipv6", ueIpv6) // UE IPv6 Address
+	}
 	log.Debug("[UE][GTP] Setting up GTP Packet Detection Rule for ", strings.Join(cmdAddPdr, " "))
 	if err := gtpTunnel.CmdAddPDR(cmdAddPdr); err != nil {
-		log.Info("[GNB][GTP] FAR 2")
-		log.Info("[GNB][GTP] FAR ueIpType ", ueIpType)
-		log.Info("[GNB][GTP] FAR ueIpv4 ", ueIpv4)
-		log.Info("[GNB][GTP] FAR ueIpv6 ", ueIpv6)
-		log.Info("[GNB][GTP] FAR ueIp ", ueIp)
-		log.Fatal("[GNB][GTP] Unable to create FAR: ", err)
+		log.Info("[GNB][GTP] PDR ueIpv4 ", ueIpv4)
+		log.Info("[GNB][GTP] PDR ueIpv6 ", ueIpv6)
+		log.Fatal("[GNB][GTP] Unable to create PDR: ", err)
 		return
 	}
 
 	cmdAddPdr = []string{nameInf,
 		"2",          // PDR ID = 2
 		"--pcd", "2", // Precedence = 2
-		"--ue-" + ueIpType, ueIp, // UE IP Address
 		"--far-id", "2", // FAR ID = 2
 		"--src-intf", "0", // Source Interface = Access
 		"--gtpu-src-ip", ueGnbIp.String(), // GTP-U source IP address (not part of PFCP spec)
+	}
+	if len(ueIpv4) != 0 {
+		cmdAddPdr = append(cmdAddPdr, "--ue-ipv4", ueIpv4) // UE IPv4 Address
+	}
+	if len(ueIpv6) != 0 {
+		cmdAddPdr = append(cmdAddPdr, "--ue-ipv6", ueIpv6) // UE IPv6 Address
 	}
 	if qfi > 0 {
 		// Create QER for downlink.
@@ -159,13 +165,17 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 	pduSession.SetTunInterface(link)
 
 	// Add UE IP Address onto the TUN network interface.
-	addrTun := &netlink.Addr{
-		IPNet: &net.IPNet{
-			IP:   net.ParseIP(ueIpv4).To4(),
-			Mask: net.IPv4Mask(255, 255, 255, 255),
-		},
+	var addrTun *netlink.Addr
+	if len(ueIpv4) != 0 {
+		addrTun = &netlink.Addr{
+			IPNet: &net.IPNet{
+				IP:   net.ParseIP(ueIpv4).To4(),
+				Mask: net.IPv4Mask(255, 255, 255, 255),
+			},
+		}
+		log.Trace(fmt.Sprintf("[UE][DATA] Using IPv4 assignment for UE %s: %s", ue.GetMsin(), ueIpv4))
 	}
-	if len(ueIpv4) == 0 {
+	if len(ueIpv6) != 0 {
 		addrTun = &netlink.Addr{
 			IPNet: &net.IPNet{
 				IP:   net.ParseIP(ueIpv6),
@@ -173,6 +183,7 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 			},
 			Scope: int(netlink.SCOPE_UNIVERSE),
 		}
+		log.Trace(fmt.Sprintf("[UE][DATA] Using IPv6 assignment for UE %s: %s", ue.GetMsin(), ueIpv6))
 	}
 	if err := netlink.AddrAdd(link, addrTun); err != nil {
 		log.Fatal("[UE][DATA] Error in adding IP for virtual interface ", err)
@@ -236,11 +247,12 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 	}
 	pduSession.SetTunRoute(route)
 
-	log.Info(fmt.Sprintf("[UE][GTP] Interface %s has successfully been configured for UE %s", nameInf, ueIp))
+	log.Info(fmt.Sprintf("[UE][GTP] Interface %s has successfully been configured for UE - IPv4: '%s', IPv6: '%s'", nameInf, ueIpv4, ueIpv6))
 	switch ue.TunnelMode {
 	case config.TunnelTun:
-		log.Info(fmt.Sprintf("[UE][GTP] You can do traffic for this UE by binding to IP %s, eg:", ueIp))
-		log.Info(fmt.Sprintf("[UE][GTP] iperf3 -B %s -c IPERF_SERVER -p PORT -t 9000", ueIp))
+		log.Info(fmt.Sprintf("[UE][GTP] You can do traffic for this UE by binding to IPv4 '%s' or IPv6 '%s', eg:", ueIpv4, ueIpv6))
+		log.Info(fmt.Sprintf("[UE][GTP] iperf3 -B %s -c IPERF_SERVER -p PORT -t 9000", ueIpv4))
+		log.Info(fmt.Sprintf("[UE][GTP] iperf3 -B %s -c IPERF_SERVER -p PORT -t 9000", ueIpv6))
 	case config.TunnelVrf:
 		log.Info(fmt.Sprintf("[UE][GTP] You can do traffic for this UE using VRF %s, eg:", vrfInf))
 		log.Info(fmt.Sprintf("[UE][GTP] sudo ip vrf exec %s iperf3 -c IPERF_SERVER -p PORT -t 9000", vrfInf))
