@@ -12,9 +12,9 @@ import (
 
 	gtpLink "github.com/free5gc/go-gtp5gnl/linkcmd"
 	gtpTunnel "github.com/free5gc/go-gtp5gnl/tuncmd"
+	"github.com/vishvananda/netlink"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
 
 	"net"
 	"strconv"
@@ -53,6 +53,9 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 	nameInf := fmt.Sprintf("val%s", msin)
 	vrfInf := fmt.Sprintf("vrf%s", msin)
 	stopSignal := make(chan bool)
+
+	// TODO: Remove after validating
+	ueIpv6 = "fe80::12c5:6864:14c0:3017"
 
 	if len(ueIpv4) == 0 && len(ueIpv6) == 0 {
 		log.Info(fmt.Sprintf("[UE][DATA] Missing IP configuration for UE %s", ue.GetMsin()))
@@ -165,47 +168,51 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 	pduSession.SetTunInterface(link)
 
 	// Add UE IP Address onto the TUN network interface.
-	var addrTun *netlink.Addr
+	var addrTun []netlink.Addr
 	if len(ueIpv4) != 0 {
-		addrTun = &netlink.Addr{
+		tun := netlink.Addr{
 			IPNet: &net.IPNet{
 				IP:   net.ParseIP(ueIpv4).To4(),
 				Mask: net.IPv4Mask(255, 255, 255, 255),
 			},
 		}
-		log.Trace(fmt.Sprintf("[UE][DATA] Using IPv4 assignment for UE %s: %s", ue.GetMsin(), ueIpv4))
+		addrTun = append(addrTun, tun)
 	}
+
 	if len(ueIpv6) != 0 {
-		addrTun = &netlink.Addr{
-			IPNet: &net.IPNet{
-				IP:   net.ParseIP(ueIpv6),
-				Mask: net.CIDRMask(128, 128),
-			},
-			Scope: int(netlink.SCOPE_UNIVERSE),
+		ip := net.ParseIP(ueIpv6)
+		if ip != nil {
+			tun := netlink.Addr{
+				IPNet: &net.IPNet{
+					IP:   net.ParseIP(ueIpv6),
+					Mask: net.CIDRMask(64, 128),
+				},
+				Scope: int(netlink.SCOPE_LINK),
+				Label: link.Attrs().Name,
+			}
+			addrTun = append(addrTun, tun)
 		}
-		log.Trace(fmt.Sprintf("[UE][DATA] Using IPv6 assignment for UE %s: %s", ue.GetMsin(), ueIpv6))
-	}
-	if err := netlink.AddrAdd(link, addrTun); err != nil {
-		log.Fatal("[UE][DATA] Error in adding IP for virtual interface ", err)
-		return
 	}
 
 	// Configure routing policy or VRF for the UE.
 	tableId := gnbPduSession.GetTeidUplink()
 	switch ue.TunnelMode {
 	case config.TunnelTun:
-		log.Trace("[UE][DATA] Creating tunnel tun")
-		rule := netlink.NewRule()
-		rule.Priority = 100
-		rule.Table = int(tableId)
-		rule.Src = addrTun.IPNet
-		_ = netlink.RuleDel(rule)
+		for _, tun := range addrTun {
 
-		if err := netlink.RuleAdd(rule); err != nil {
-			log.Fatal("[UE][DATA] Unable to create routing policy rule for UE", err)
-			return
+			log.Trace("[UE][DATA] Creating tunnel tun")
+			rule := netlink.NewRule()
+			rule.Priority = 100
+			rule.Table = int(tableId)
+			rule.Src = tun.IPNet
+			_ = netlink.RuleDel(rule)
+
+			if err := netlink.RuleAdd(rule); err != nil {
+				log.Fatal("[UE][DATA] Unable to create routing policy rule for UE", err)
+				return
+			}
+			pduSession.SetTunRule(rule)
 		}
-		pduSession.SetTunRule(rule)
 	case config.TunnelVrf:
 		log.Trace("[UE][DATA] Creating tunnel vrf")
 		vrfDevice := &netlink.Vrf{
@@ -231,6 +238,14 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 			return
 		}
 		pduSession.SetVrfDevice(vrfDevice)
+	}
+
+	// Add UE IP Address onto the TUN network interface.
+	for _, tun := range addrTun {
+		if err := netlink.AddrAdd(link, &tun); err != nil {
+			log.Fatal("[UE][DATA] Error in adding IP for virtual interface ", err)
+			return
+		}
 	}
 
 	// Insert default route from the UE to the Data Network.
