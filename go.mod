@@ -21,7 +21,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tetratelabs/wazero v1.9.0
 	github.com/urfave/cli/v2 v2.27.6
-	github.com/vishvananda/netlink v1.3.0
+	github.com/vishvananda/netlink v1.3.1
 )
 
 require (
@@ -32,9 +32,10 @@ require (
 	github.com/khirono/go-genl v1.0.1 // indirect
 	github.com/khirono/go-nl v1.0.5 // indirect
 	github.com/khirono/go-rtnllink v1.1.1 // indirect
-	github.com/kr/text v0.2.0 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/tim-ywliu/nested-logrus-formatter v1.3.2 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
