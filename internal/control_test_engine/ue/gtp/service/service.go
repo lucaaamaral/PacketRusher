@@ -9,6 +9,7 @@ import (
 	"my5G-RANTester/config"
 	gnbContext "my5G-RANTester/internal/control_test_engine/gnb/context"
 	"my5G-RANTester/internal/control_test_engine/ue/context"
+	"os/exec"
 
 	gtpLink "github.com/free5gc/go-gtp5gnl/linkcmd"
 	gtpTunnel "github.com/free5gc/go-gtp5gnl/tuncmd"
@@ -54,9 +55,6 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 	vrfInf := fmt.Sprintf("vrf%s", msin)
 	stopSignal := make(chan bool)
 
-	// TODO: Remove after validating
-	ueIpv6 = "fe80::12c5:6864:14c0:3017"
-
 	if len(ueIpv4) == 0 && len(ueIpv6) == 0 {
 		log.Info(fmt.Sprintf("[UE][DATA] Missing IP configuration for UE %s", ue.GetMsin()))
 		return
@@ -80,6 +78,14 @@ func SetupGtpInterface(ue *context.UEContext, msg gnbContext.UEMessage) {
 	pduSession.SetStopSignal(stopSignal)
 
 	time.Sleep(time.Second)
+
+	// Set addr_gen_mode=1 for stable privacy IID (if supported by kernel) to avoid MAC-based EUI-64 addresses.
+	cmdAddrGen := exec.Command("sysctl", "-w", fmt.Sprintf("net.ipv6.conf.%s.addr_gen_mode=1", nameInf))
+	if err := cmdAddrGen.Run(); err != nil {
+		log.Warn("[UE][DATA] Unable to set IPv6 address generation mode for interface ", nameInf, ": ", err)
+	} else {
+		log.Info("[UE][DATA] Configured IPv6 address generation mode for interface ", nameInf)
+	}
 
 	// Create FAR for uplink.
 	cmdAddFar := []string{nameInf,
